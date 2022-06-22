@@ -8,9 +8,15 @@ const readJsonFileSync = (path) => {
   } catch (error) {}
   return res;
 };
-
+const withoutCws = (key,value)=>{
+  if(key == 'cws'){
+    return undefined;
+  }else{
+    return value;
+  }
+};
 const writeJsonFileSync = (path, obj) => {
-  let str = JSON.stringify(obj);
+  let str = JSON.stringify(obj,withoutCws);
   fs.writeFileSync(path, str);
 };
 

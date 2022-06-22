@@ -1,13 +1,1 @@
-[
-    {
-        "type": "TC",
-        "name": "TCP客户端-101天车",
-        "createTime": 1655804465172,
-        "recv": [],
-        "send": [],
-        "comStatus": 0,
-        "wsStatus": 0,
-        "sendType": "SD",
-        "comServer": "127.0.0.1:5000"
-    }
-]
+[{"type":"TC","name":"TCP客户端-t1","createTime":1655890758438,"recv":[],"send":[{"type":"str","fill":"left","loc":"big","name":"p1","length":"5","fillValue":"23","value":"abc"},{"type":"int32","fill":"","loc":"big","name":"p2","length":4,"value":"12345"},{"type":"int32","fill":"","loc":"small","name":"p3","length":4,"value":"44"}],"comStatus":1,"wsStatus":0,"sendType":"SD","comServer":"127.0.0.1:12345"}]
