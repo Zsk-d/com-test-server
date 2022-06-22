@@ -1,0 +1,13 @@
+[
+    {
+        "type": "TC",
+        "name": "TCP客户端-101天车",
+        "createTime": 1655804465172,
+        "recv": [],
+        "send": [],
+        "comStatus": 0,
+        "wsStatus": 0,
+        "sendType": "SD",
+        "comServer": "127.0.0.1:5000"
+    }
+]
