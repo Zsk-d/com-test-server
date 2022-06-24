@@ -5,33 +5,47 @@ const { readJsonFileSync, writeJsonFileSync } = require("./fileUtil");
 
 const comDataFilePath = "./data/com_data.json";
 
+let dataChangeCount = 0;
+
 /**
  * 通信连接参数配置
  */
 let comItemsConfig = [];
 let coms = {};
 const newCom = (item) => {
-  let com = new Com(item, (updData) => {
-    let { key, value } = updData;
-    let keys = key.split(".");
-    let tmp = "item";
-    for (let i = 0; i < keys.length; i++) {
-      tmp += `['${keys[i]}']`;
+  let com = new Com(
+    item,
+    (updData) => {
+      let { key, value } = updData;
+      let keys = key.split(".");
+      let tmp = "item";
+      for (let i = 0; i < keys.length; i++) {
+        tmp += `['${keys[i]}']`;
+      }
+      tmp += "=" + value;
+      eval(tmp);
+      item.cws.sendText(
+        JSON.stringify({
+          action: "update",
+          updData,
+        })
+      );
+    },
+    (data) => {
+      item.cws.sendText(
+        JSON.stringify({
+          action: "data",
+          data,
+        })
+      );
     }
-    tmp += "=" + value;
-    eval(tmp);
-    item.cws.sendText(
-      JSON.stringify({
-        action: "update",
-        updData,
-      })
-    );
-  });
+  );
   coms[item.name] = com;
 };
 const initComs = () => {
   comItemsConfig.forEach((item) => {
     item.comStatus = 0;
+    item.listenStatus = 0;
     newCom(item);
   });
 };
@@ -64,7 +78,11 @@ const getParamByName = (itemName, sendRecvType, paramName) => {
   return param;
 };
 
-const saveComDataFile = () => {
+const saveComDataFile = (count) => {
+  if (count && dataChangeCount++ > count) {
+    dataChangeCount = 0;
+    return false;
+  }
   writeJsonFileSync(comDataFilePath, comItemsConfig);
 };
 const addAndSaveComItems = (item) => {
@@ -115,6 +133,9 @@ const addAndSaveItemParam = (name, type, param) => {
   let item = getItemByName(name);
   if (item && !getParamByName(name, type, param.name)) {
     let itemParam = type == "send" ? item.send : item.recv;
+    if (param.type == "str" && param.lengthType == "ZD") {
+      param.length = Buffer.byteLength(param.value, "utf-8");
+    }
     itemParam.push(param);
     saveComDataFile();
   }
@@ -124,8 +145,55 @@ const addAndSaveItemParam = (name, type, param) => {
 const editAndSaveItemParam = ({ name, type, paramName, value }) => {
   let param = getParamByName(name, type, paramName);
   param.value = value;
-  saveComDataFile();
+  if (param.type == "str" && param.lengthType == "ZD") {
+    param.length = Buffer.byteLength(param.value, "utf-8");
+  }
+  saveComDataFile(10);
   return getItemByName(name);
+};
+
+const delAndSaveItemParam = ({ name, type, paramName }) => {
+  let item = getItemByName(name);
+  let index = -1;
+  for (let i = 0; i < item[type].length; i++) {
+    if (item[type][i].name == paramName) {
+      index = i;
+      break;
+    }
+  }
+  if (index != -1) {
+    item[type].splice(index, 1);
+    saveComDataFile();
+  }
+  return item;
+};
+
+const changeAndSaveItemParamIndex = ({ name, type, paramName, value }) => {
+  let item = getItemByName(name);
+  let index = -1;
+  for (let i = 0; i < item[type].length; i++) {
+    if (item[type][i].name == paramName) {
+      index = i;
+      break;
+    }
+  }
+  if (index != -1) {
+    let p = item[type].splice(index, 1)[0];
+    item[type].splice(index + value, 0, p);
+    saveComDataFile();
+  }
+  return item;
+};
+
+const sendNowParams = ({ conn, action, item, data }) => {
+  conn.sendText(
+    JSON.stringify({
+      action,
+      name: data.data.name,
+      type: data.data.type,
+      params: item[data.data.type],
+    })
+  );
 };
 
 try {
@@ -164,25 +232,16 @@ try {
               data.data.type,
               data.data.param
             );
-            conn.sendText(
-              JSON.stringify({
-                action: "updateParams",
-                name: data.data.name,
-                type: data.data.type,
-                params: item[data.data.type],
-              })
-            );
+            sendNowParams({ conn, action: "updateParams", item, data });
           } else if (type == "editParam") {
-            // itemName, type, paramName, value
             let item = editAndSaveItemParam(data.data);
-            conn.sendText(
-              JSON.stringify({
-                action: "updateParams",
-                name: data.data.name,
-                type: data.data.type,
-                params: item[data.data.type],
-              })
-            );
+            sendNowParams({ conn, action: "updateParams", item, data });
+          } else if (type == "delParam") {
+            let item = delAndSaveItemParam(data.data);
+            sendNowParams({ conn, action: "updateParams", item, data });
+          } else if (type == "changeParamIndex") {
+            let item = changeAndSaveItemParamIndex(data.data);
+            sendNowParams({ conn, action: "updateParams", item, data });
           }
         });
       } else if (action == "/connect") {
@@ -197,6 +256,10 @@ try {
             coms[itemName].destroy();
           } else if (str == "send") {
             coms[itemName].send();
+          } else if (str == "listen") {
+            coms[itemName].listen(true);
+          } else if (str == "stopListen") {
+            coms[itemName].listen(false);
           }
         });
       } else if (action == "/disconnect") {
