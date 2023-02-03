@@ -1,5 +1,6 @@
 const net = require("net");
 const dgram = require("dgram");
+const request = require("request")
 
 const getComBuffer = (params) => {
   if (params.length == 0) {
@@ -124,6 +125,16 @@ class Com {
         },
         this.option.send,
         this.option.recv
+      );
+    } else if (this.option.type == "HC") {
+      this.comObj = new HttpClient(
+        this.option.comServer,
+        (res) => {
+          this.recvCb(res);
+        },
+        this.option.send,
+        this.option.recv,
+        this.option
       );
     } else if (this.option.type == "UC") {
       this.comObj = new UdpClient(
@@ -312,7 +323,34 @@ class UdpClient {
   }
   onListening;
   destroy() {
-    this.client.destroy();
+    try{
+      this.client.destroy();
+    }catch(e){}
+  }
+}
+class HttpClient {
+  constructor(server, onData, sendParams, recvParams, option) {
+    this.server = server;
+    this.sendParams = sendParams;
+    this.recvParams = recvParams;
+    this.onData = onData;
+    this.client = request;
+
+    // this.client.on("data", (buffer) => {
+    //   let res = readComBuffer(this.recvParams, buffer);
+    //   this.onData(res);
+    // });
+    // this.client.on("error", (e) => {
+    //   console.log("err", e);
+    // });
+  }
+  send() {
+    let info = this.server.split(":");
+    let buffer = getComBuffer(this.sendParams);
+    this.client.send(buffer, 0, buffer.length, parseInt(info[1]), info[0]);
+  }
+  onListening;
+  destroy() {
   }
 }
 class UdpServer {
@@ -353,7 +391,9 @@ class UdpServer {
     }
   }
   destroy() {
-    this.server.close();
+    try{
+      this.server.close();
+    }catch(e){}
   }
 }
 
