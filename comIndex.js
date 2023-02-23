@@ -38,6 +38,14 @@ const newCom = (item) => {
           data,
         })
       );
+    },
+    (data) => {
+      item.cws.sendText(
+        JSON.stringify({
+          action: "error",
+          data,
+        })
+      );
     }
   );
   coms[item.name] = com;

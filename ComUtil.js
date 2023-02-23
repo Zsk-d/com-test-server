@@ -58,7 +58,24 @@ const getComBuffer = (params) => {
   );
   return buffer;
 };
-/**
+const parseHttpParams = (serverUrl, params) => {
+  let res = serverUrl;
+  if (params.length > 0) {
+    res += "?";
+    let tmp = [];
+    params.forEach(item => {
+      tmp.push(item.name + "=" + item.value);
+    });
+    res += tmp.join("&");
+  }
+  return res;
+}
+const parseHttpBody = (params) => {
+  let json = {};
+  params.forEach(item => json[item.name] = (item.type == 'number'?parseFloat(item.value):item.value));
+  return json;
+}
+/**1
  *
  * @param {Object} params
  * @param {Buffer} buffer
@@ -101,12 +118,22 @@ const readComBuffer = (params, buffer) => {
   });
   return res;
 };
+const readHttpRes = (config, params, res) => {
+  if (config.resDataType == "text") {
+    return res;
+  } else if (config.resDataType == "json") {
+    let returnRes = [];
+    params.forEach(item => returnRes.push(item.type=='object'?JSON.stringify(res[item.name]):res[item.name]));
+    return returnRes;
+  }
+}
 
 class Com {
-  constructor(option, updateCb, recvCb) {
+  constructor(option, updateCb, recvCb, errorCb) {
     this.option = option;
     this.updateCb = updateCb;
     this.recvCb = recvCb;
+    this.errorCb = errorCb;
     this.init();
   }
 
@@ -124,7 +151,8 @@ class Com {
           this.updateValue("comStatus", 0);
         },
         this.option.send,
-        this.option.recv
+        this.option.recv,
+        this.errorCb
       );
     } else if (this.option.type == "HC") {
       this.comObj = new HttpClient(
@@ -134,7 +162,8 @@ class Com {
         },
         this.option.send,
         this.option.recv,
-        this.option
+        this.option,
+        this.errorCb
       );
     } else if (this.option.type == "UC") {
       this.comObj = new UdpClient(
@@ -199,11 +228,12 @@ class Com {
 }
 
 class TcpClient {
-  constructor(server, onConnect, onData, onClose, sendParams, recvParams) {
+  constructor(server, onConnect, onData, onClose, sendParams, recvParams, errorCb) {
     this.server = server;
     this.sendParams = sendParams;
     this.recvParams = recvParams;
     this.onData = onData;
+    this.errorCb = errorCb;
     this.client = new net.Socket({ readable: true, writable: true });
     this.client.on("connect", (e) => {
       onConnect();
@@ -223,9 +253,13 @@ class TcpClient {
   }
   connect() {
     let info = this.server.split(":");
-    this.client.connect(parseInt(info[1]), info[0], (res) => {
-      console.log(`tcp客户端已连接`);
-    });
+    try {
+      this.client.connect(parseInt(info[1]), info[0], (res) => {
+        console.log(`tcp客户端已连接`);
+      });
+    } catch (e) {
+      this.errorCb(e.message)
+    }
   }
   send() {
     let buffer = getComBuffer(this.sendParams);
@@ -323,31 +357,48 @@ class UdpClient {
   }
   onListening;
   destroy() {
-    try{
+    try {
       this.client.destroy();
-    }catch(e){}
+    } catch (e) { }
   }
 }
 class HttpClient {
-  constructor(server, onData, sendParams, recvParams, option) {
+  constructor(server, onData, sendParams, recvParams, option, errorCb) {
     this.server = server;
     this.sendParams = sendParams;
     this.recvParams = recvParams;
+    this.errorCb = errorCb;
     this.onData = onData;
     this.client = request;
+    this.option = option
 
-    // this.client.on("data", (buffer) => {
-    //   let res = readComBuffer(this.recvParams, buffer);
-    //   this.onData(res);
-    // });
     // this.client.on("error", (e) => {
     //   console.log("err", e);
     // });
   }
   send() {
-    let info = this.server.split(":");
-    let buffer = getComBuffer(this.sendParams);
-    this.client.send(buffer, 0, buffer.length, parseInt(info[1]), info[0]);
+    let url = parseHttpParams(this.server, this.sendParams);
+    if (this.option.config.method == "GET") {
+      this.client.get(url, (error, response, body) => {
+        if (error) {
+
+        } else {
+          let res = readHttpRes(this.option.config, this.recvParams, body)
+          this.onData(res);
+        }
+      })
+    } else if (this.option.config.method == "POST") {
+      let json = parseHttpBody(this.sendParams);
+      this.client.post(url,{json}, (error, response, body) => {
+        if (error) {
+
+        } else {
+          let res = readHttpRes(this.option.config, this.recvParams, body)
+          this.onData(res);
+        }
+      })
+    }
+    // this.client.send(buffer, 0, buffer.length, parseInt(info[1]), info[0]);
   }
   onListening;
   destroy() {
@@ -391,9 +442,9 @@ class UdpServer {
     }
   }
   destroy() {
-    try{
+    try {
       this.server.close();
-    }catch(e){}
+    } catch (e) { }
   }
 }
 
